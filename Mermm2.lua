@@ -1,140 +1,374 @@
--- Mermm2 GUI Script Part 1: UI + Core Setup local Rayfield = loadstring(game:HttpGet("https://raw.githubusercontent.com/shlexware/Rayfield/main/source"))()
+if game.PlaceId ~= 142823291 then return end
 
-local Window = Rayfield:CreateWindow({ Name = "Mermm2 | MM2 GUI", LoadingTitle = "Mermm2 Hub", LoadingSubtitle = "by Mer", ConfigurationSaving = { Enabled = true, FolderName = "Mermm2", FileName = "Mermm2Config" }, Discord = { Enabled = false }, KeySystem = false })
+-- Load Rayfield UI
+local Rayfield = loadstring(game:HttpGet('https://raw.githubusercontent.com/UI-Libraries/Rayfield/main/source'))()
 
-local Tabs = { Main = Window:CreateTab("Main", 4483362458), ESP = Window:CreateTab("ESP", 4483362458), Troll = Window:CreateTab("Troll", 4483362458), Utility = Window:CreateTab("Utility", 4483362458), Settings = Window:CreateTab("Settings", 4483362458) }
+-- Services
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local Mouse = LocalPlayer:GetMouse()
 
--- Mermm2 GUI Script Part 2: Main Features Tabs.Main:CreateToggle({ Name = "Auto Shoot Murderer", CurrentValue = false, Callback = function(Value) getgenv().AutoShoot = Value while getgenv().AutoShoot do task.wait(0.1) local players = game:GetService("Players"):GetPlayers() for _, plr in ipairs(players) do if plr.Character and plr.Character:FindFirstChild("Knife") then game:GetService("ReplicatedStorage")._network:FireServer("ShootGun", plr.Character:FindFirstChild("HumanoidRootPart").Position) end end end end })
+-- State variables
+local EspSettings = {
+    ShowNames = true,
+    ShowMurderer = false,
+    ShowSheriff = false,
+    ShowPlayers = false,
+    ESPOn = false,
+}
 
-Tabs.Main:CreateButton({ Name = "Teleport to Gun", Callback = function() for _,v in ipairs(workspace:GetChildren()) do if v.Name == "GunDrop" then game.Players.LocalPlayer.Character:PivotTo(v.CFrame) end end end })
+local CoinFarmActive = false
+local MurdererName, SheriffName = nil, nil
+local ESPFolder = Instance.new("Folder", LocalPlayer.PlayerGui)
+ESPFolder.Name = "ESPTrackers"
 
-Tabs.Main:CreateToggle({ Name = "Auto Collect Coins", CurrentValue = false, Callback = function(state) getgenv().AutoCollect = state while getgenv().AutoCollect do task.wait() for _, obj in pairs(workspace:GetChildren()) do if obj.Name == "Coin" then game.Players.LocalPlayer.Character:PivotTo(obj.CFrame) end end end end })
+local FlyActive = false
+local NoclipActive = false
+local GodmodeActive = false
+local XrayActive = false
 
--- Mermm2 GUI Script Part 3: ESP + Troll Features Tabs.ESP:CreateToggle({ Name = "Enable ESP", CurrentValue = false, Callback = function(bool) for _, v in pairs(game.Players:GetPlayers()) do if v ~= game.Players.LocalPlayer then local char = v.Character if char and not char:FindFirstChild("ESP") then local esp = Instance.new("Highlight") esp.Name = "ESP" esp.FillColor = Color3.new(1, 0, 0) esp.FillTransparency = 0.5 esp.OutlineColor = Color3.new(1, 1, 1) esp.OutlineTransparency = 0 esp.Adornee = char esp.Parent = char end end end end })
+-- Utility functions --
+local function ClearESP()
+    for _, gui in pairs(ESPFolder:GetChildren()) do
+        gui:Destroy()
+    end
+end
 
-Tabs.Troll:CreateButton({ Name = "Lay on Back", Callback = function() local anim = Instance.new("Animation") anim.AnimationId = "rbxassetid://282574440" -- lay down animation local hum = game.Players.LocalPlayer.Character:FindFirstChild("Humanoid") hum:LoadAnimation(anim):Play() end })
+local function CreateESP(targetPlayer, displayName, color)
+    if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("Head") then return end
+    if ESPFolder:FindFirstChild(targetPlayer.Name) then return end
 
-Tabs.Troll:CreateButton({ Name = "Fake Knife", Callback = function() local fake = Instance.new("Part", game.Players.LocalPlayer.Character) fake.Name = "FakeKnife" fake.Size = Vector3.new(1,1,1) fake.BrickColor = BrickColor.new("Bright red") fake.Material = Enum.Material.Neon fake.CFrame = game.Players.LocalPlayer.Character:FindFirstChild("RightHand").CFrame fake.Anchored = false fake.CanCollide = false fake.Massless = true local weld = Instance.new("WeldConstraint", fake) weld.Part0 = fake weld.Part1 = game.Players.LocalPlayer.Character:FindFirstChild("RightHand") end })
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = targetPlayer.Name
+    billboard.Adornee = targetPlayer.Character.Head
+    billboard.Size = UDim2.new(0, 100, 0, 30)
+    billboard.StudsOffset = Vector3.new(0, 2, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Parent = ESPFolder
 
--- Mermm2 GUI Script Part 4: Utility Features Tabs.Utility:CreateToggle({ Name = "Anti Fling", CurrentValue = false, Callback = function(state) getgenv().AntiFling = state while getgenv().AntiFling do task.wait() local root = game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart") if root and (root.Velocity.Magnitude > 100 or root.AssemblyAngularVelocity.Magnitude > 100) then root.Velocity = Vector3.zero root.AssemblyAngularVelocity = Vector3.zero end end end })
+    local label = Instance.new("TextLabel", billboard)
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = color
+    label.TextStrokeColor3 = Color3.new(0,0,0)
+    label.TextStrokeTransparency = 0.5
+    label.Font = Enum.Font.SourceSansBold
+    label.TextScaled = true
+    label.Text = displayName
+end
 
-Tabs.Utility:CreateButton({ Name = "Low Graphics Mode", Callback = function() for _, v in pairs(game.Lighting:GetChildren()) do if v:IsA("PostEffect") then v.Enabled = false end end game.Lighting.GlobalShadows = false game.Lighting.FogEnd = 100000 end })
+local function UpdateRolesESP()
+    ClearESP()
+    MurdererName = nil
+    SheriffName = nil
 
--- Mermm2 GUI Script Part 5: Settings + Final Tabs.Settings:CreateButton({ Name = "Destroy GUI", Callback = function() game:GetService("CoreGui"):FindFirstChild("RayfieldLibrary"):Destroy() end })
--- Mermm2 GUI Script Part 2: Advanced Role Logic + More Features
-
--- Role Revealer Tabs.Main:CreateToggle({ Name = "Reveal Roles", CurrentValue = false, Callback = function(State) getgenv().RevealRoles = State while getgenv().RevealRoles do task.wait(1) for _, plr in pairs(game.Players:GetPlayers()) do if plr.Character then local hasKnife = plr.Backpack:FindFirstChild("Knife") or (plr.Character:FindFirstChild("Knife") and true) local hasGun = plr.Backpack:FindFirstChild("Gun") or (plr.Character:FindFirstChild("Gun") and true) if hasKnife then print(plr.Name .. " is MURDERER") elseif hasGun then print(plr.Name .. " is SHERIFF") else print(plr.Name .. " is INNOCENT") end end end end end })
-
--- Auto Kill Everyone (Murderer Only) Tabs.Main:CreateToggle({ Name = "Kill All (as Murd)", CurrentValue = false, Callback = function(State) getgenv().KillAll = State while getgenv().KillAll do task.wait(0.2) local plr = game.Players.LocalPlayer if plr.Backpack:FindFirstChild("Knife") or plr.Character:FindFirstChild("Knife") then for _, target in pairs(game.Players:GetPlayers()) do if target ~= plr and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then plr.Character:PivotTo(target.Character.HumanoidRootPart.CFrame) task.wait(0.2) game.ReplicatedStorage._network:FireServer("KnifeHit", target.Character.HumanoidRootPart) end end end end end })
-
--- Mute Annoying Lobby Music Tabs.Utility:CreateButton({ Name = "Mute Lobby Music", Callback = function() for _, s in pairs(workspace:GetDescendants()) do if s:IsA("Sound") and s.IsPlaying and s.Volume > 0 then s.Volume = 0 end end end })
-
--- Remove Lobby Fog Tabs.Utility:CreateButton({ Name = "Remove Fog", Callback = function() game.Lighting.FogEnd = 9999999 game.Lighting.FogStart = 0 end })
-
--- Walkspeed Toggle Tabs.Utility:CreateSlider({ Name = "Walkspeed", Range = {16, 100}, Increment = 1, CurrentValue = 16, Callback = function(Value) game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = Value end })
-
--- Jump Power Toggle Tabs.Utility:CreateSlider({ Name = "Jump Power", Range = {50, 200}, Increment = 1, CurrentValue = 50, Callback = function(Value) game.Players.LocalPlayer.Character.Humanoid.JumpPower = Value end })
-
--- Free Camera View Tabs.Utility:CreateButton({ Name = "Free Cam View", Callback = function() loadstring(game:HttpGet("https://raw.githubusercontent.com/MerToolIt/FreeCam/main/main.lua"))() end })
--- Mermm2 GUI Script Part 3: ESP, Troll, and Visual Tools
-
--- ESP Toggle (Box ESP) Tabs.ESP:CreateToggle({ Name = "Player ESP", CurrentValue = false, Callback = function(Value) getgenv().ESPEnabled = Value if Value then local RunService = game:GetService("RunService") getgenv().espConnections = {}
-
-for _, player in pairs(game.Players:GetPlayers()) do
-            if player ~= game.Players.LocalPlayer and player.Character then
-                local billboard = Instance.new("BillboardGui")
-                billboard.Name = "Mermm2ESP"
-                billboard.Size = UDim2.new(0, 100, 0, 20)
-                billboard.AlwaysOnTop = true
-                billboard.Adornee = player.Character:FindFirstChild("Head")
-
-                local textLabel = Instance.new("TextLabel")
-                textLabel.Size = UDim2.new(1, 0, 1, 0)
-                textLabel.Text = player.DisplayName
-                textLabel.BackgroundTransparency = 1
-                textLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
-                textLabel.TextStrokeTransparency = 0.5
-                textLabel.TextScaled = true
-                textLabel.Parent = billboard
-                billboard.Parent = player.Character:FindFirstChild("Head")
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character then
+            local hasKnife, hasGun = false, false
+            for _, item in pairs(plr.Backpack:GetChildren()) do
+                if item.Name == "Knife" then hasKnife = true end
+                if item.Name == "Gun" or item.Name == "Revolver" then hasGun = true end
             end
-        end
-    else
-        for _, player in pairs(game.Players:GetPlayers()) do
-            if player.Character and player.Character:FindFirstChild("Head") then
-                local esp = player.Character.Head:FindFirstChild("Mermm2ESP")
-                if esp then
-                    esp:Destroy()
+            for _, item in pairs(plr.Character:GetChildren()) do
+                if item.Name == "Knife" then hasKnife = true end
+                if item.Name == "Gun" or item.Name == "Revolver" then hasGun = true end
+            end
+
+            if hasKnife then
+                MurdererName = plr.Name
+                if EspSettings.ShowMurderer then
+                    CreateESP(plr, EspSettings.ShowNames and plr.Name or "Murderer", Color3.new(1,0,0))
                 end
+            elseif hasGun then
+                SheriffName = plr.Name
+                if EspSettings.ShowSheriff then
+                    CreateESP(plr, EspSettings.ShowNames and plr.Name or "Sheriff", Color3.new(0,0,1))
+                end
+            elseif EspSettings.ShowPlayers then
+                CreateESP(plr, EspSettings.ShowNames and plr.Name or "Innocent", Color3.new(0,1,0))
             end
         end
     end
 end
 
+-- Auto Farm function (simplified, no octree)
+local function FindCoins()
+    local map = nil
+    for _, m in pairs(Workspace:GetChildren()) do
+        if m:IsA("Model") and m.Name == "Base" then
+            map = m.Parent
+            break
+        end
+    end
+    if not map then return {} end
+    local container = map:FindFirstChild("CoinContainer")
+    if not container then return {} end
+
+    local coins = {}
+    for _, coin in pairs(container:GetDescendants()) do
+        if coin:IsA("MeshPart") and coin.Material == Enum.Material.Ice then
+            table.insert(coins, coin)
+        end
+    end
+    return coins
+end
+
+local AutoFarmCoroutine = nil
+local function AutoFarm()
+    if AutoFarmCoroutine then
+        coroutine.close(AutoFarmCoroutine)
+        AutoFarmCoroutine = nil
+    end
+    AutoFarmCoroutine = coroutine.create(function()
+        while CoinFarmActive do
+            local coins = FindCoins()
+            table.sort(coins, function(a,b)
+                return (a.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude < (b.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
+            end)
+            for _, coin in pairs(coins) do
+                if not CoinFarmActive then break end
+                local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    hrp.CFrame = CFrame.new(coin.Position) + Vector3.new(0,3,0)
+                    task.wait(0.3)
+                end
+            end
+            task.wait(0.5)
+        end
+    end)
+    coroutine.resume(AutoFarmCoroutine)
+end
+
+-- Rayfield UI Setup --
+local Window = Rayfield:CreateWindow({
+    Name = "MM2 Multi-Tool",
+    LoadingTitle = "Loading MM2 Script...",
+    LoadingSubtitle = "by ChatGPT + User",
+    ConfigurationSaving = {
+        Enabled = true,
+        FolderName = "MM2MultiToolConfigs",
+        FileName = "UserConfig"
+    },
+    Discord = {
+        Enabled = false,
+    }
 })
 
----- Mermm2 GUI Script Part 4: Silent Aim, Auto Tools, Low Graphics
+local MainTab = Window:CreateTab("Main")
 
--- Silent Aim (only targets Murderer) Tabs.Main:CreateToggle({ Name = "Silent Aim (Murder Only)", CurrentValue = false, Callback = function(Value) getgenv().SilentAimEnabled = Value end })
+-- ESP Toggles
+MainTab:CreateToggle({
+    Name = "Show Murderer ESP",
+    CurrentValue = false,
+    Flag = "MurdererESP",
+    Callback = function(value)
+        EspSettings.ShowMurderer = value
+        EspSettings.ESPOn = value or EspSettings.ShowSheriff or EspSettings.ShowPlayers
+        UpdateRolesESP()
+    end,
+})
 
--- Hook Gun Tool local old; old = hookmetamethod(game, "__namecall", function(Self, ...) local args = {...} if SilentAimEnabled and getnamecallmethod() == "FireServer" and tostring(Self) == "ShootGun" then local players = game:GetService("Players") local target = nil for _,v in pairs(players:GetPlayers()) do if v ~= players.LocalPlayer and v.Character and v.Character:FindFirstChild("Knife") then target = v.Character:FindFirstChild("HumanoidRootPart") break end end if target then args[2] = target.Position return old(Self, unpack(args)) end end return old(Self, ...) end)
+MainTab:CreateToggle({
+    Name = "Show Sheriff ESP",
+    CurrentValue = false,
+    Flag = "SheriffESP",
+    Callback = function(value)
+        EspSettings.ShowSheriff = value
+        EspSettings.ESPOn = value or EspSettings.ShowMurderer or EspSettings.ShowPlayers
+        UpdateRolesESP()
+    end,
+})
 
--- Low Graphics Mode (Toggle) Tabs.Utility:CreateToggle({ Name = "Low Graphics Mode", CurrentValue = false, Callback = function(Value) if Value then game:GetService("Lighting").FogEnd = 100 game:GetService("Lighting").Brightness = 1 game:GetService("Lighting").ColorCorrection.Enabled = false for _, v in pairs(workspace:GetDescendants()) do if v:IsA("Texture") or v:IsA("Decal") then v.Transparency = 1 elseif v:IsA("ParticleEmitter") or v:IsA("Trail") then v.Enabled = false end end else game:GetService("Lighting").FogEnd = 1000 game:GetService("Lighting").Brightness = 2 for _, v in pairs(workspace:GetDescendants()) do if v:IsA("Texture") or v:IsA("Decal") then v.Transparency = 0 elseif v:IsA("ParticleEmitter") or v:IsA("Trail") then v.Enabled = true end end end end })
+MainTab:CreateToggle({
+    Name = "Show Other Players ESP",
+    CurrentValue = false,
+    Flag = "PlayersESP",
+    Callback = function(value)
+        EspSettings.ShowPlayers = value
+        EspSettings.ESPOn = value or EspSettings.ShowMurderer or EspSettings.ShowSheriff
+        UpdateRolesESP()
+    end,
+})
 
--- Auto Tool Grab (Gun only) Tabs.Main:CreateToggle({ Name = "Auto Get Gun", CurrentValue = false, Callback = function(Value) getgenv().AutoGun = Value while AutoGun and wait(1) do local gun = workspace:FindFirstChild("GunDrop") if gun and game.Players.LocalPlayer.Character then game.Players.LocalPlayer.Character:PivotTo(gun.CFrame) end end end })
--- Mermm2 GUI Script Part 3: ESP, Troll, and Visual Tools
+MainTab:CreateToggle({
+    Name = "Show Names on ESP",
+    CurrentValue = true,
+    Flag = "NamesOnESP",
+    Callback = function(value)
+        EspSettings.ShowNames = value
+        UpdateRolesESP()
+    end,
+})
 
--- ESP Toggle (Box ESP) Tabs.ESP:CreateToggle({ Name = "Player ESP", CurrentValue = false, Callback = function(Value) getgenv().ESPEnabled = Value if Value then local RunService = game:GetService("RunService") getgenv().espConnections = {}
+MainTab:CreateToggle({
+    Name = "Turn Off ESP",
+    CurrentValue = false,
+    Flag = "EspOff",
+    Callback = function(value)
+        if value then
+            EspSettings.ShowMurderer = false
+            EspSettings.ShowSheriff = false
+            EspSettings.ShowPlayers = false
+            EspSettings.ESPOn = false
+            ClearESP()
+            -- Reset toggles visually
+            Window:UpdateToggle("MurdererESP", false)
+            Window:UpdateToggle("SheriffESP", false)
+            Window:UpdateToggle("PlayersESP", false)
+        end
+    end,
+})
 
-for _, player in pairs(game.Players:GetPlayers()) do
-            if player ~= game.Players.LocalPlayer and player.Character then
-                local billboard = Instance.new("BillboardGui")
-                billboard.Name = "Mermm2ESP"
-                billboard.Size = UDim2.new(0, 100, 0, 20)
-                billboard.AlwaysOnTop = true
-                billboard.Adornee = player.Character:FindFirstChild("Head")
-
-                local textLabel = Instance.new("TextLabel")
-                textLabel.Size = UDim2.new(1, 0, 1, 0)
-                textLabel.Text = player.DisplayName
-                textLabel.BackgroundTransparency = 1
-                textLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
-                textLabel.TextStrokeTransparency = 0.5
-                textLabel.TextScaled = true
-                textLabel.Parent = billboard
-                billboard.Parent = player.Character:FindFirstChild("Head")
+-- Coin Auto Farm toggle
+MainTab:CreateToggle({
+    Name = "Auto Coin Farm",
+    CurrentValue = false,
+    Flag = "AutoFarm",
+    Callback = function(value)
+        CoinFarmActive = value
+        if value then
+            AutoFarm()
+        else
+            if AutoFarmCoroutine then
+                coroutine.close(AutoFarmCoroutine)
+                AutoFarmCoroutine = nil
             end
         end
-    else
-        for _, player in pairs(game.Players:GetPlayers()) do
-            if player.Character and player.Character:FindFirstChild("Head") then
-                local esp = player.Character.Head:FindFirstChild("Mermm2ESP")
-                if esp then
-                    esp:Destroy()
+    end,
+})
+
+-- Fly Toggle (simplified fly)
+local FlyBodyGyro, FlyBodyVelocity
+local function StartFly()
+    if FlyActive then return end
+    local character = LocalPlayer.Character
+    if not character then return end
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    FlyBodyGyro = Instance.new("BodyGyro", hrp)
+    FlyBodyGyro.P = 9e4
+    FlyBodyGyro.maxTorque = Vector3.new(9e9, 9e9, 9e9)
+    FlyBodyGyro.cframe = hrp.CFrame
+
+    FlyBodyVelocity = Instance.new("BodyVelocity", hrp)
+    FlyBodyVelocity.velocity = Vector3.new(0,0,0)
+    FlyBodyVelocity.maxForce = Vector3.new(9e9, 9e9, 9e9)
+
+    FlyActive = true
+
+    local SPEED = 50
+    local CONTROL = {F=0,B=0,L=0,R=0}
+
+    UserInputService.InputBegan:Connect(function(input)
+        if input.KeyCode == Enum.KeyCode.W then CONTROL.F = 1 end
+        if input.KeyCode == Enum.KeyCode.S then CONTROL.B = -1 end
+        if input.KeyCode == Enum.KeyCode.A then CONTROL.L = -1 end
+        if input.KeyCode == Enum.KeyCode.D then CONTROL.R = 1 end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.KeyCode == Enum.KeyCode.W then CONTROL.F = 0 end
+        if input.KeyCode == Enum.KeyCode.S then CONTROL.B = 0 end
+        if input.KeyCode == Enum.KeyCode.A then CONTROL.L = 0 end
+        if input.KeyCode == Enum.KeyCode.D then CONTROL.R = 0 end
+    end)
+
+    RunService:BindToRenderStep("FlyControl", Enum.RenderPriority.Character.Value, function()
+        if not FlyActive then return end
+        local moveDirection = (Workspace.CurrentCamera.CFrame.LookVector * (CONTROL.F + CONTROL.B)) + (Workspace.CurrentCamera.CFrame.RightVector * (CONTROL.R + CONTROL.L))
+        FlyBodyVelocity.velocity = moveDirection * SPEED
+        FlyBodyGyro.cframe = Workspace.CurrentCamera.CFrame
+    end)
+end
+
+local function StopFly()
+    FlyActive = false
+    RunService:UnbindFromRenderStep("FlyControl")
+    if FlyBodyGyro then FlyBodyGyro:Destroy() FlyBodyGyro = nil end
+    if FlyBodyVelocity then FlyBodyVelocity:Destroy() FlyBodyVelocity = nil end
+end
+
+MainTab:CreateToggle({
+    Name = "Fly",
+    CurrentValue = false,
+    Flag = "FlyToggle",
+    Callback = function(value)
+        if value then StartFly() else StopFly() end
+    end,
+})
+
+-- Noclip (toggle)
+local function SetNoclip(enabled)
+    NoclipActive = enabled
+end
+
+RunService.Stepped:Connect(function()
+    if NoclipActive then
+        local character = LocalPlayer.Character
+        if character then
+            for _, part in pairs(character:GetChildren()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
                 end
             end
         end
     end
-end
+end)
 
+MainTab:CreateToggle({
+    Name = "Noclip",
+    CurrentValue = false,
+    Flag = "NoclipToggle",
+    Callback = function(value)
+        SetNoclip(value)
+    end,
 })
 
--- Troll Tab Features Tabs.Troll:CreateButton({ Name = "Lay Down (Fake Death)", Callback = function() local char = game.Players.LocalPlayer.Character if not char then return end char.Humanoid:ChangeState(Enum.HumanoidStateType.Physics) for _, part in pairs(char:GetDescendants()) do if part:IsA("BasePart") then part.Anchored = false part.Velocity = Vector3.new(0, -100, 0) end end end })
+-- Godmode, Xray, BringGun features can be added similarly if you want
 
-Tabs.Troll:CreateButton({ Name = "Explode Visual (No Damage)", Callback = function() local part = Instance.new("Part") part.Position = game.Players.LocalPlayer.Character.HumanoidRootPart.Position part.Anchored = true part.Size = Vector3.new(1,1,1) part.Transparency = 1 part.Parent = workspace local explosion = Instance.new("Explosion") explosion.Position = part.Position explosion.BlastRadius = 0 explosion.BlastPressure = 0 explosion.Parent = part game.Debris:AddItem(part, 2) end })
+-- Keybinds for toggling features quickly
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.C then -- CoinFarm toggle
+        CoinFarmActive = not CoinFarmActive
+        Window:UpdateToggle("AutoFarm", CoinFarmActive)
+        if CoinFarmActive then AutoFarm() else if AutoFarmCoroutine then coroutine.close(AutoFarmCoroutine) AutoFarmCoroutine=nil end end
+    elseif input.KeyCode == Enum.KeyCode.M then -- Murderer ESP toggle
+        EspSettings.ShowMurderer = not EspSettings.ShowMurderer
+        Window:UpdateToggle("MurdererESP", EspSettings.ShowMurderer)
+        UpdateRolesESP()
+    elseif input.KeyCode == Enum.KeyCode.Q then -- Players ESP toggle
+        EspSettings.ShowPlayers = not EspSettings.ShowPlayers
+        Window:UpdateToggle("PlayersESP", EspSettings.ShowPlayers)
+        UpdateRolesESP()
+    elseif input.KeyCode == Enum.KeyCode.B then -- ESP off toggle
+        EspSettings.ShowMurderer = false
+        EspSettings.ShowSheriff = false
+        EspSettings.ShowPlayers = false
+        Window:UpdateToggle("MurdererESP", false)
+        Window:UpdateToggle("SheriffESP", false)
+        Window:UpdateToggle("PlayersESP", false)
+        ClearESP()
+    elseif input.KeyCode == Enum.KeyCode.F then -- Fly toggle
+        FlyActive = not FlyActive
+        Window:UpdateToggle("FlyToggle", FlyActive)
+        if FlyActive then StartFly() else StopFly() end
+    elseif input.KeyCode == Enum.KeyCode.R then -- Noclip toggle
+        NoclipActive = not NoclipActive
+        Window:UpdateToggle("NoclipToggle", NoclipActive)
+    end
+end)
 
-Tabs.Troll:CreateButton({ Name = "Fake Chat Spam", Callback = function() for i = 1,5 do game:GetService("ReplicatedStorage").DefaultChatSystemChatEvents.SayMessageRequest:FireServer("I'M THE MURDERER!! jk", "All") wait(1.5) end end })
--- Mermm2 GUI Script Part 5: Extra Troll + Anti Features
-
--- Fake Chat Spammer Tabs.Troll:CreateButton({ Name = "Fake Hacker Spam", Callback = function() local plr = game.Players.LocalPlayer for i = 1, 10 do game.ReplicatedStorage.DefaultChatSystemChatEvents.SayMessageRequest:FireServer("Stop hacking bro wth", "All") wait(1) end end })
-
--- Explosion Troll (Visual Only) Tabs.Troll:CreateButton({ Name = "Explosion Effect", Callback = function() local boom = Instance.new("Explosion") boom.Position = game.Players.LocalPlayer.Character.HumanoidRootPart.Position boom.BlastPressure = 0 boom.BlastRadius = 0 boom.Parent = workspace end })
-
--- Anti AFK local vu = game:GetService("VirtualUser") game:GetService("Players").LocalPlayer.Idled:Connect(function() vu:Button2Down(Vector2.new(0,0),workspace.CurrentCamera.CFrame) wait(1) vu:Button2Up(Vector2.new(0,0),workspace.CurrentCamera.CFrame) end)
-
--- Anti Fling (Safe) Tabs.Utility:CreateToggle({ Name = "Anti Fling", CurrentValue = false, Callback = function(Value) getgenv().AntiFling = Value while AntiFling do for _,v in pairs(game:GetService("Players"):GetPlayers()) do if v ~= game.Players.LocalPlayer and v.Character and v.Character:FindFirstChild("HumanoidRootPart") then v.Character.HumanoidRootPart.Velocity = Vector3.new(0,0,0) v.Character.HumanoidRootPart.RotVelocity = Vector3.new(0,0,0) end end task.wait(0.5) end end })
-
--- UI Destroy Button Tabs.Settings:CreateButton({ Name = "Destroy GUI", Callback = function() game:GetService("CoreGui"):FindFirstChild("RayfieldUI"):Destroy() end })
-
-
-
+-- Periodically update roles ESP to keep things accurate
+spawn(function()
+    while true do
+        if EspSettings.ESPOn then
+            UpdateRolesESP()
+        end
+        task.wait(2)
+    end
+end)
